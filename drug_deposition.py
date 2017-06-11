@@ -7,46 +7,6 @@ import numpy as np
 import pandas as pd
 
 
-# In[7]:
-
-get_ipython().magic('load_ext rpy2.ipython')
-
-
-# In[8]:
-
-get_ipython().run_cell_magic('R', '', 'library(plyr)\nlibrary(ggplot2)\nlibrary(reshape2)')
-
-
-# In[9]:
-
-get_ipython().magic('load_ext autotime')
-
-
-# # TODO
-# 
-
-# Parameters for porosity in multilayer wall. 
-# 
-#     *endothelium 
-#     *tunica intima 
-#     *inner elastic membrane 
-#     *tunica media
-#  
-# Linearly interpolate diffusion parameters between Abraham at al and Jesoionek at al. to get the $D_{AB}$ for the drug in each layer.  
-# 
-# Does the reflectivity change per tissue? Probably right?  Different cells endocytose the drug at a greater rate.  So if we can get binding coefficients/reflection coefficients for each tissue that would be good.
-# 
-# We can also linearily interpolate those.
-# 
-# Once parameter set is stable for any number of wall models, do some testing them run fine mesh on cluster.
-# 
-# Compare results to default wall model and literature values presented in Abraham et al.
-# 
-# 
-# 
-#     
-# 
-
 # # Parameters
 # 
 # Multilayer models the the arterial wall taken from Jesionek 2014.
@@ -55,8 +15,6 @@ get_ipython().magic('load_ext autotime')
 # 
 # The class object allow us to easy access all variables.
 # Define constants and wall models as lists ala Jesionek.
-
-# In[23]:
 
 class Testing_Parameters_4_Layer(object):
     """ Multi Phase testing parameters for 4 layer wall
@@ -77,7 +35,6 @@ class Testing_Parameters_4_Layer(object):
     K           = [   3.2172e-9  , 2.2e-4   , 3.18e-7   , 2e-6     ]
     mu          = [   0.72e-3    , 0.72e-3  , 0.72e-3   , 0.72e-3  ]
  
-    # Find porosirt estimates
 class Vafai_4_Layer(object):
     """ 
         L. Ai, K. Vafai,
@@ -122,7 +79,6 @@ class Vafai_4_Layer(object):
         Dt_new.append( Dt[i]*(dta/Dt[1]) )
 
     Dt = Dt_new
-
     
 class Testing_Parameters_2_Layer(object):
     """ Multi Phase testing parameters.
@@ -184,10 +140,6 @@ class Testing_Parameters(object):
 # 1) takes in an arterial wall parameter model defined above
 # 2) Descritizes the wall in radius and time, as well as parameter space across the radius
 # 3) Solves the drug diffusion model
-# 
-# 
-
-# In[24]:
 
 class Drug_Diffusion(object):
     def __init__(self, parameters):
@@ -298,8 +250,6 @@ class Drug_Diffusion(object):
 
 # # Run Simulations
 
-# In[59]:
-
 # Run default Abraham model
 # Grab the appropriate parameter set
 parameters = Testing_Parameters()
@@ -311,9 +261,7 @@ simd.descritize(total_time=500, delivery_time = 25, dt=0.002, dr=1)
 simd.solve()
 
 
-# In[60]:
-
-# Run testing 4 layer model
+# Run testing multi layer model
 parameters = Vafai_4_Layer()
 sim2 = Drug_Diffusion(parameters)
 sim2.descritize(total_time=500, delivery_time = 25, dt=0.002, dr=1)
@@ -321,9 +269,6 @@ sim2.solve()
 
 
 # # Testing Visualize Results
-
-# In[61]:
-
 # Testing - get cache of data for r
 # build combined data frame of default single model and 2 compartment wall model 
 
@@ -353,13 +298,12 @@ def my_melt(sim, fluid=True, sub_sample = True):
     return df
 
 
-# In[62]:
 
-sim2.f.shape
-list(np.arange(0,sim2.l, sim2.dr))
-print(sim2.M, sim2.dt)
-print(sim2.N, sim2.dr)
-print(sim2.f.shape)
+# sim2.f.shape
+# list(np.arange(0,sim2.l, sim2.dr))
+# print(sim2.M, sim2.dt)
+# print(sim2.N, sim2.dr)
+# print(sim2.f.shape)
 
 
 # Prep data for R 
@@ -398,31 +342,40 @@ M = simd.M
 delivery_time = simd.delivery_time
 
 
+
+
+
+# Store data
+simd.to_pickle("./sim_default.p")
+sim2.to_pickle("./sim_multi.p")
+
+
+
 # Push data to R and make some plots
 
 # In[64]:
 
-get_ipython().magic('Rpush N M total_time data delivery_time')
+#get_ipython().magic('Rpush N M total_time data delivery_time')
 
 
 # In[65]:
 
-get_ipython().run_cell_magic('R', '', '\n# get concentration in the radius for just last time point \ndf = subset(data, data$time == max(data$time))\n\n# plot the concentration as a function of radius\ng = ggplot(df, aes( x=radius,\n                    y=concentration,\n                    linetype=medium,\n                    color=model))+\n    geom_line()+\n    facet_wrap(~medium, scales="free_y", ncol=1)+\n    theme_bw()+xlim(0,100)+\n    labs(title="Concentration of Drug in Tissue and Fluid\\nat the End of the Simulation")\n    \n\nprint(g)')
+#get_ipython().run_cell_magic('R', '', '\n# get concentration in the radius for just last time point \ndf = subset(data, data$time == max(data$time))\n\n# plot the concentration as a function of radius\ng = ggplot(df, aes( x=radius,\n                    y=concentration,\n                    linetype=medium,\n                    color=model))+\n    geom_line()+\n    facet_wrap(~medium, scales="free_y", ncol=1)+\n    theme_bw()+xlim(0,100)+\n    labs(title="Concentration of Drug in Tissue and Fluid\\nat the End of the Simulation")\n    \n\nprint(g)')
 
 
 # In[66]:
 
-get_ipython().run_cell_magic('R', '', '\n# subset data to just the tissue and multicomparment model\ndf = subset(data, data$medium=="tissue")\ndf = subset(df, df$model=="multi")\n# add a column for during or post drug delivery\ndf$delivery = \'No\'\ndf$delivery[df$time<delivery_time]="Yes"\n\n# subset to only after delivery times\ndf = subset(df, df$delivery == "No")\n\n# make plot of drug across radius for a bunch of times\ng = ggplot(df, aes( x=radius,\n                    y=concentration,\n                    group=time,\n                    color=time))+\n    geom_line(alpha=0.5)+\n    scale_color_gradient(high="red",low="blue")+\n    #facet_wrap(~delivery, scales="free", ncol=1)+\n    theme_bw()+xlim(0,50)+#ylim(0,3)+\n    labs(title="Concentration of Drug in Tissue")\n    \n\nprint(g)')
+#get_ipython().run_cell_magic('R', '', '\n# subset data to just the tissue and multicomparment model\ndf = subset(data, data$medium=="tissue")\ndf = subset(df, df$model=="multi")\n# add a column for during or post drug delivery\ndf$delivery = \'No\'\ndf$delivery[df$time<delivery_time]="Yes"\n\n# subset to only after delivery times\ndf = subset(df, df$delivery == "No")\n\n# make plot of drug across radius for a bunch of times\ng = ggplot(df, aes( x=radius,\n                    y=concentration,\n                    group=time,\n                    color=time))+\n    geom_line(alpha=0.5)+\n    scale_color_gradient(high="red",low="blue")+\n    #facet_wrap(~delivery, scales="free", ncol=1)+\n    theme_bw()+xlim(0,50)+#ylim(0,3)+\n    labs(title="Concentration of Drug in Tissue")\n    \n\nprint(g)')
 
 
 # In[67]:
 
-get_ipython().run_cell_magic('R', '', '\ndf = subset(data, data$radius == 30)\n\ng = ggplot(df, aes( x=time,\n                    y=concentration,\n                    linetype=medium,\n                    color=model))+\n    geom_line()+\n    facet_wrap(~medium, scales="free_y", ncol=1)+\n    theme_bw()+\n    labs(title="Concentration of Drug in Tissue and Fluid\\nat 30 um into the Wall Across Time")\n    \nprint(g)')
+#get_ipython().run_cell_magic('R', '', '\ndf = subset(data, data$radius == 30)\n\ng = ggplot(df, aes( x=time,\n                    y=concentration,\n                    linetype=medium,\n                    color=model))+\n    geom_line()+\n    facet_wrap(~medium, scales="free_y", ncol=1)+\n    theme_bw()+\n    labs(title="Concentration of Drug in Tissue and Fluid\\nat 30 um into the Wall Across Time")\n    \nprint(g)')
 
 
 # In[58]:
 
-get_ipython().run_cell_magic('R', '', '\ndf = subset(data, data$time == 99)\ndf$group = paste(df$model, df$medium, sep="_")\n#df = subset(df, df$model == "multi")\n#df = subset(df, df$medium == "Tissue")\ndf$radius = 2000 + df$radius\n\n\ng = ggplot(df, aes( y=radius,\n                    x=group,\n                    fill=concentration))+\n    geom_tile()+\n    theme_bw()+\n    ylim(c(0,max(df$radius)+20))+\n    coord_polar(theta="x")+\n    scale_fill_gradient(low="steelblue",high="firebrick")+\n    theme(panel.background=element_blank(),\n           axis.title=element_blank(),\n           panel.grid=element_blank(),\n           #axis.text.x=element_blank(),\n           axis.ticks=element_blank())\n    \nprint(g)')
+#get_ipython().run_cell_magic('R', '', '\ndf = subset(data, data$time == 99)\ndf$group = paste(df$model, df$medium, sep="_")\n#df = subset(df, df$model == "multi")\n#df = subset(df, df$medium == "Tissue")\ndf$radius = 2000 + df$radius\n\n\ng = ggplot(df, aes( y=radius,\n                    x=group,\n                    fill=concentration))+\n    geom_tile()+\n    theme_bw()+\n    ylim(c(0,max(df$radius)+20))+\n    coord_polar(theta="x")+\n    scale_fill_gradient(low="steelblue",high="firebrick")+\n    theme(panel.background=element_blank(),\n           axis.title=element_blank(),\n           panel.grid=element_blank(),\n           #axis.text.x=element_blank(),\n           axis.ticks=element_blank())\n    \nprint(g)')
 
 
 # In[ ]:

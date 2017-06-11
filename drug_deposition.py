@@ -238,7 +238,7 @@ class Drug_Diffusion(object):
             self.mu[a:b] = self.p.mu[i]
             self.K[a:b] = self.p.K[i]
         
-    def solve(self, fluid_bc = [1,0], tissue_bc=[0,0]):
+    def solve(self, fluid_bc = [1,0], tissue_bc=[1,0]):
         """
         Function to solve the diffusion equation
         """
@@ -251,6 +251,8 @@ class Drug_Diffusion(object):
         # set the boundary condition of delivery for some time as a constant  stream of drug in the center of the fluid
         delivery_index = int(np.ceil((float(self.delivery_time) / self.total_time)* self.M))
         f[:delivery_index,0] = fluid_bc[0]
+        t[:delivery_index,0] = fluid_bc[0]*self.p.gamma[0]
+
         
 
         # Loop through time and space, solving the finite differences model
@@ -320,7 +322,7 @@ parameters = Testing_Parameters()
 # initialize the simulation class with the parameters
 simd = Drug_Diffusion(parameters)
 # descritize as desired
-simd.descritize(total_time=10, delivery_time = 25, dt=0.002, dr=1)
+simd.descritize(total_time=100, delivery_time = 25, dt=0.002, dr=1)
 # run the finite differences
 simd.solve()
 
@@ -328,7 +330,7 @@ simd.solve()
 # Run testing multi layer model
 parameters = Vafai_4_Layer()
 sim2 = Drug_Diffusion(parameters)
-sim2.descritize(total_time=10, delivery_time = 25, dt=0.002, dr=1)
+sim2.descritize(total_time=100, delivery_time = 25, dt=0.002, dr=1)
 sim2.solve()
 
 
@@ -389,7 +391,8 @@ with open('./sim_default.p', 'wb') as output:
 with open('./sim_multi.p', 'wb') as output:
     pickle.dump(sim2, output)   
 
-np.savetxt('./sim_default.f.csv', simd.f, delimiter=",")
-np.savetxt('./sim_default.t.csv', simd.t, delimiter=",")
-np.savetxt('./sim_multi.f.csv', sim2.f,  delimiter=",")
-np.savetxt('./sim_multi.t.csv', sim2.t,  delimiter=",")
+#np.savetxt('./sim_default.f.csv', simd.f, delimiter=",")
+#np.savetxt('./sim_default.t.csv', simd.t, delimiter=",")
+#np.savetxt('./sim_multi.f.csv', sim2.f,  delimiter=",")
+#np.savetxt('./sim_multi.t.csv', sim2.t,  delimiter=",")
+data.to_csv('./sim_data.csv', sep=",",header=True)

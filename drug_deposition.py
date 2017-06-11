@@ -2,11 +2,11 @@
 # coding: utf-8
 
 # In[6]:
-
+import sys, os
 import numpy as np
 import pandas as pd
 import pickle
-
+import argparse
 # # Parameters
 # 
 # Multilayer models the the arterial wall taken from Jesionek 2014.
@@ -38,7 +38,7 @@ class Vafai_4_Layer(object):
     
     # Variable  
     names       = [  'endothel'  , 'intima' , 'IEL'    ,'media'   ]
-    L           = [   2.         , 10.      , 2.       , 200.     ]
+    L           = [   2.         , 10.      , 2.       , 200.     ] # 
     Dt          = [   8.514E-13  , 5.0E-8   , 3.18E-11 , 5.0E-10  ] # cm^2/s
     epsilon     = [   0.0005     , 0.96     , 0.004    , 0.15     ] # D'Less
     alpha       = [   1.145E-2   , 1.7084E-1, 1.7084E-1, 1.34E-1  ] # D'less 
@@ -167,16 +167,15 @@ class Testing_Parameters(object):
     mu          = [ 1.4E-3 ] # dynamic viscosity Pa-s
     
  
-
 # # Simulation Class
-
 # The simulation class is the work horse of the implementation.  It does a number of things:
 # 1) takes in an arterial wall parameter model defined above
 # 2) Descritizes the wall in radius and time, as well as parameter space across the radius
 # 3) Solves the drug diffusion model
 
 class Drug_Diffusion(object):
-    def __init__(self, parameters):
+    def __init__(self, parameters, options=None):
+        self.options = options
         self.p = parameters
         self.t = None
         self.f = None
@@ -253,13 +252,13 @@ class Drug_Diffusion(object):
         f[:delivery_index,0] = fluid_bc[0]
         t[:delivery_index,0] = fluid_bc[0]*self.p.gamma[0]
 
-        
+        out_handle = open(os.path.join(options.output, "progress.txt"), "a")
 
         # Loop through time and space, solving the finite differences model
         # by population the solution matricies f and t
         for i in range(1,self.M-1): # time
-            if i % (10/self.dt) == 0:
-                print("Complete {} time steps.".format(i))
+            if i % (100/self.dt) == 0:
+                out.write("Complete {} time steps.\n".format(int(i*self.dt)))
             for j in range(1,self.N-1): # space
 
                 # get wall model parameters for current spacial location
@@ -280,12 +279,12 @@ class Drug_Diffusion(object):
                 # update tissue
                 t[i, j] = t[i-1, j] +                                         (Dt * self.dt)/( 2 * self.r[j] * self.dr**2 ) * (                                             ( self.r[j+1] + self.r[j] ) * (t[i-1,j+1] - t[i-1,j]) -                                             ( self.r[j] + self.r[j-1] ) * (t[i-1,j] - t[i-1,j-1])) +                                         self.dt * alpha * ( gamma * f[i-1,j] - t[i-1,j])
                 
-            
+
+        out_handle.close()
         # store results
         self.t = t
         self.f = f
         
-
 
 def my_melt(sim, fluid=True, sub_sample = True):
     # function to melt the solution matrix from a simulation
@@ -311,88 +310,71 @@ def my_melt(sim, fluid=True, sub_sample = True):
             
     return df
 
+def main(options):
+    # # Run Simulations
 
 
+    out_handle = open(os.path.join(options.output, "progress.txt"), "w")
+    out_handle.write("Staring with paramters: {}".format(options))
+    out_handle.close()
 
-# # Run Simulations
-
-# Run default Abraham model
-# Grab the appropriate parameter set
-parameters = Testing_Parameters()
-# initialize the simulation class with the parameters
-simd = Drug_Diffusion(parameters)
-# descritize as desired
-simd.descritize(total_time=100, delivery_time = 25, dt=0.002, dr=1)
-# run the finite differences
-simd.solve()
+    if options.model == "default":
+        parameters = Testing_Parameters()
+    if options.model == "vafai4":
+        parameters = Vafai_4_Layer()
 
 
-# Run testing multi layer model
-parameters = Vafai_4_Layer()
-sim2 = Drug_Diffusion(parameters)
-sim2.descritize(total_time=100, delivery_time = 25, dt=0.002, dr=1)
-sim2.solve()
+    sim = Drug_Diffusion(parameters, options=options)
+    sim.descritize( total_time=options.time,
+                    delivery_time=options.delivery_time,
+                    dt=options.dt,
+                    dr=options.dr)
+    sim.solve()
 
 
-# # Testing Visualize Results
-# Testing - get cache of data for r
-# build combined data frame of default single model and 2 compartment wall model 
+    # get melted versions of solution matrix 
+    multi_f = my_melt(sim, fluid=True)
+    multi_t = my_melt(sim, fluid=False)
 
-# sim2.f.shape
-# list(np.arange(0,sim2.l, sim2.dr))
-# print(sim2.M, sim2.dt)
-# print(sim2.N, sim2.dr)
-# print(sim2.f.shape)
+    # add wall model identifiers to the dataframes
+    multi_f['model'] = options.model
+    multi_t['model'] = options.model
 
+    # add fluid/tissue identifier
+    multi_f['medium'] = "fluid"
+    multi_t['medium'] = "tissue"
 
-# Prep data for R 
+    # make a list of the resulting data frames
+    frames = [multi_f, multi_t]
 
-# In[63]:
+    # combine all the results into one dataframe
+    data = pd.concat(frames)
 
-
-# get melted versions of solution matrix 
-default_f = my_melt(simd, fluid=True)
-default_t = my_melt(simd, fluid=False)
-multi_f = my_melt(sim2, fluid=True)
-multi_t = my_melt(sim2, fluid=False)
-
-# add wall model identifiers to the dataframes
-default_f['model'] = "default"
-default_t['model'] = "default"
-multi_f['model'] = "multi"
-multi_t['model'] = "multi"
-
-# add fluid/tissue identifier
-default_f['medium'] = "fluid"
-default_t['medium'] = "tissue"
-multi_f['medium'] = "fluid"
-multi_t['medium'] = "tissue"
-
-# make a list of the resulting data frames
-frames = [default_f, default_t, multi_f, multi_t]
-
-# combine all the results into one dataframe
-data = pd.concat(frames)
-
-# get some parameters into the name space so we can pass then to R
-total_time = simd.total_time
-N = simd.N
-M = simd.M
-delivery_time = simd.delivery_time
+    # get some parameters into the name space so we can pass then to R
+    data.to_csv(os.path.join(options.output,'sim.{}.csv'.format(options.model)), sep=",",header=True)
+    
+    # Store data
+    with open(os.path.join(options.output,'sim.{}.p'.format(options.model)), 'wb') as output:
+        pickle.dump(sim, output)   
 
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(usage = globals()['__doc__'])
+
+    # flag based reporting options
+    parser.add_argument("-v", "--verbose", action="store_true", default=False, help="Verbose output")      
+    parser.add_argument("-o", "--output", action="store", default="./", help="output directory")
+    parser.add_argument("--model",  action="store", default='default', help="Specify the wall model to use")
+    parser.add_argument("--delivery_time", action="store", default=120, type=float, help="Amount of time to deliver the drug")
+    parser.add_argument("--dt", action="store", default=0.002, type=float, help="time step")
+    parser.add_argument("--dr", action="store", default=1, type=float, help="radial step")
+    parser.add_argument("--time", action="store", default=100, type=int, help="Total Run Time")
+
+    # parse arguments
+    options = parser.parse_args()   
+
+    exit_code = main(options)
+
+    sys.exit(exit_code)
 
 
-
-# Store data
-
-with open('./sim_default.p', 'wb') as output:
-    pickle.dump(simd, output)
-with open('./sim_multi.p', 'wb') as output:
-    pickle.dump(sim2, output)   
-
-#np.savetxt('./sim_default.f.csv', simd.f, delimiter=",")
-#np.savetxt('./sim_default.t.csv', simd.t, delimiter=",")
-#np.savetxt('./sim_multi.f.csv', sim2.f,  delimiter=",")
-#np.savetxt('./sim_multi.t.csv', sim2.t,  delimiter=",")
-data.to_csv('./sim_data.csv', sep=",",header=True)

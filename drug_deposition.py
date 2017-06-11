@@ -5,7 +5,7 @@
 
 import numpy as np
 import pandas as pd
-
+import pickle
 
 # # Parameters
 # 
@@ -16,25 +16,7 @@ import pandas as pd
 # The class object allow us to easy access all variables.
 # Define constants and wall models as lists ala Jesionek.
 
-class Testing_Parameters_4_Layer(object):
-    """ Multi Phase testing parameters for 4 layer wall
-    """
-    
-    # Global
-    Df = 50
-    vessel_radius = 2.00E3 
-    dp = 4784
-    
-    # Variable  
-    names       = [  'endothel'  , 'intima' , 'IEL'     ,'media'   ]
-    L           = [   2.         , 10.      , 2.        , 200.     ]
-    Dt          = [   6E-6       , 5.0e-1   , 3.18e-4   , 5e-3     ]
-    epsilon     = [   5E-4       , 0.61     , 5E-4      , 0.61     ] 
-    alpha       = [   1-0.9886   , 1-0.8292 , 1-0.8295  , 1-0.8660 ]
-    gamma       = [   38         , 38       , 38        , 38       ] 
-    K           = [   3.2172e-9  , 2.2e-4   , 3.18e-7   , 2e-6     ]
-    mu          = [   0.72e-3    , 0.72e-3  , 0.72e-3   , 0.72e-3  ]
- 
+
 class Vafai_4_Layer(object):
     """ 
         L. Ai, K. Vafai,
@@ -72,14 +54,68 @@ class Vafai_4_Layer(object):
     # convert to drug units
     dta = 5.0E-11 # m^2/s
     dta = dta * 1E12 # um^2/s
-    print('dta: ', dta)
+
     # Assume the reference abraham is for the intima
     Dt_new = []
     for i in range(len(Dt)):
         Dt_new.append( Dt[i]*(dta/Dt[1]) )
 
     Dt = Dt_new
+
+class Abraham_1_Layer(object):
+    """ Single Phase testing parameters used in Abraham et al.
+    """
     
+    # Global Parameters
+    
+    # Flux - VR
+    # Diffusivity of drug in fluid
+    # vessel size
+    # Pressure drop
+    VR = 37.5 # um^2/s?
+    Df = 50 # um^2/s
+    vessel_radius = 2.00E3 # um
+    dp = 4784 # Pa
+    
+    # Parameters of multi layer wall
+    # Wall thicknes (r) - L [um]
+    # Diffusivity - D [um^2/s]
+    # porosity - epsilon  [D'less]
+    # binding - alpha (1-reflection coefficient) [D'less]
+    # partition coefficient - gamma [D'less]
+        
+    name        = [ 'wall' ]
+    L           = [ 214    ] # this is to match the new model
+    Dt          = [ 6E-13    ] # Diffusivity  m^2/s
+    epsilon     = [ 0.61   ] # porosity [D'less]
+    alpha       = [ 0.01   ] # binding coefficeint [D'less]
+    gamma       = [ 38     ] # parition coefficient 
+    K           = [ 2E-18 ] # permeability m^2/s
+    mu          = [ 1.4E-3 ] # dynamic viscosity Pa-s
+
+
+    Dt = [i * 1E12 for i in Dt]
+    K  = [i * 1E12 for i in K]
+
+class Testing_Parameters_4_Layer(object):
+    """ Multi Phase testing parameters for 4 layer wall
+    """
+    
+    # Global
+    Df = 50
+    vessel_radius = 2.00E3 
+    dp = 4784
+    
+    # Variable  
+    names       = [  'endothel'  , 'intima' , 'IEL'     ,'media'   ]
+    L           = [   2.         , 10.      , 2.        , 200.     ]
+    Dt          = [   6E-6       , 5.0e-1   , 3.18e-4   , 5e-3     ]
+    epsilon     = [   5E-4       , 0.61     , 5E-4      , 0.61     ] 
+    alpha       = [   1-0.9886   , 1-0.8292 , 1-0.8295  , 1-0.8660 ]
+    gamma       = [   38         , 38       , 38        , 38       ] 
+    K           = [   3.2172e-9  , 2.2e-4   , 3.18e-7   , 2e-6     ]
+    mu          = [   0.72e-3    , 0.72e-3  , 0.72e-3   , 0.72e-3  ]
+ 
 class Testing_Parameters_2_Layer(object):
     """ Multi Phase testing parameters.
     """
@@ -122,17 +158,15 @@ class Testing_Parameters(object):
     # partition coefficient - gamma [D'less]
         
     name        = [ 'wall' ]
-    L           = [ 200    ] # thickness 
-    Dt          = [ 0.6    ] # Diffusivity 
+    L           = [ 214    ] # this is to match the new model
+    Dt          = [ 6E-13    ] # Diffusivity 
     epsilon     = [ 0.61   ] # porosity [D'less]
     alpha       = [ 0.01   ] # binding coefficeint [D'less]
     gamma       = [ 38     ] # parition coefficient 
-    K           = [ 1.2E-6 ] # permeability um^2
-    mu          = [ 1.0E-3 ] # dynamic viscosity Pa-s
+    K           = [ 2E-18 ] # permeability um^2
+    mu          = [ 1.4E-3 ] # dynamic viscosity Pa-s
     
-
-    
-
+ 
 
 # # Simulation Class
 
@@ -218,11 +252,14 @@ class Drug_Diffusion(object):
         delivery_index = int(np.ceil((float(self.delivery_time) / self.total_time)* self.M))
         f[:delivery_index,0] = fluid_bc[0]
         
-             
+
         # Loop through time and space, solving the finite differences model
         # by population the solution matricies f and t
         for i in range(1,self.M-1): # time
+            if i % (10/self.dt) == 0:
+                print("Complete {} time steps.".format(i))
             for j in range(1,self.N-1): # space
+
                 # get wall model parameters for current spacial location
                 r = self.r[j]
                 alpha = self.alpha[j]
@@ -246,31 +283,6 @@ class Drug_Diffusion(object):
         self.t = t
         self.f = f
         
-
-
-# # Run Simulations
-
-# Run default Abraham model
-# Grab the appropriate parameter set
-parameters = Testing_Parameters()
-# initialize the simulation class with the parameters
-simd = Drug_Diffusion(parameters)
-# descritize as desired
-simd.descritize(total_time=500, delivery_time = 25, dt=0.002, dr=1)
-# run the finite differences
-simd.solve()
-
-
-# Run testing multi layer model
-parameters = Vafai_4_Layer()
-sim2 = Drug_Diffusion(parameters)
-sim2.descritize(total_time=500, delivery_time = 25, dt=0.002, dr=1)
-sim2.solve()
-
-
-# # Testing Visualize Results
-# Testing - get cache of data for r
-# build combined data frame of default single model and 2 compartment wall model 
 
 
 def my_melt(sim, fluid=True, sub_sample = True):
@@ -298,6 +310,31 @@ def my_melt(sim, fluid=True, sub_sample = True):
     return df
 
 
+
+
+# # Run Simulations
+
+# Run default Abraham model
+# Grab the appropriate parameter set
+parameters = Testing_Parameters()
+# initialize the simulation class with the parameters
+simd = Drug_Diffusion(parameters)
+# descritize as desired
+simd.descritize(total_time=10, delivery_time = 25, dt=0.002, dr=1)
+# run the finite differences
+simd.solve()
+
+
+# Run testing multi layer model
+parameters = Vafai_4_Layer()
+sim2 = Drug_Diffusion(parameters)
+sim2.descritize(total_time=10, delivery_time = 25, dt=0.002, dr=1)
+sim2.solve()
+
+
+# # Testing Visualize Results
+# Testing - get cache of data for r
+# build combined data frame of default single model and 2 compartment wall model 
 
 # sim2.f.shape
 # list(np.arange(0,sim2.l, sim2.dr))
@@ -346,39 +383,13 @@ delivery_time = simd.delivery_time
 
 
 # Store data
-simd.to_pickle("./sim_default.p")
-sim2.to_pickle("./sim_multi.p")
 
+with open('./sim_default.p', 'wb') as output:
+    pickle.dump(simd, output)
+with open('./sim_multi.p', 'wb') as output:
+    pickle.dump(sim2, output)   
 
-
-# Push data to R and make some plots
-
-# In[64]:
-
-#get_ipython().magic('Rpush N M total_time data delivery_time')
-
-
-# In[65]:
-
-#get_ipython().run_cell_magic('R', '', '\n# get concentration in the radius for just last time point \ndf = subset(data, data$time == max(data$time))\n\n# plot the concentration as a function of radius\ng = ggplot(df, aes( x=radius,\n                    y=concentration,\n                    linetype=medium,\n                    color=model))+\n    geom_line()+\n    facet_wrap(~medium, scales="free_y", ncol=1)+\n    theme_bw()+xlim(0,100)+\n    labs(title="Concentration of Drug in Tissue and Fluid\\nat the End of the Simulation")\n    \n\nprint(g)')
-
-
-# In[66]:
-
-#get_ipython().run_cell_magic('R', '', '\n# subset data to just the tissue and multicomparment model\ndf = subset(data, data$medium=="tissue")\ndf = subset(df, df$model=="multi")\n# add a column for during or post drug delivery\ndf$delivery = \'No\'\ndf$delivery[df$time<delivery_time]="Yes"\n\n# subset to only after delivery times\ndf = subset(df, df$delivery == "No")\n\n# make plot of drug across radius for a bunch of times\ng = ggplot(df, aes( x=radius,\n                    y=concentration,\n                    group=time,\n                    color=time))+\n    geom_line(alpha=0.5)+\n    scale_color_gradient(high="red",low="blue")+\n    #facet_wrap(~delivery, scales="free", ncol=1)+\n    theme_bw()+xlim(0,50)+#ylim(0,3)+\n    labs(title="Concentration of Drug in Tissue")\n    \n\nprint(g)')
-
-
-# In[67]:
-
-#get_ipython().run_cell_magic('R', '', '\ndf = subset(data, data$radius == 30)\n\ng = ggplot(df, aes( x=time,\n                    y=concentration,\n                    linetype=medium,\n                    color=model))+\n    geom_line()+\n    facet_wrap(~medium, scales="free_y", ncol=1)+\n    theme_bw()+\n    labs(title="Concentration of Drug in Tissue and Fluid\\nat 30 um into the Wall Across Time")\n    \nprint(g)')
-
-
-# In[58]:
-
-#get_ipython().run_cell_magic('R', '', '\ndf = subset(data, data$time == 99)\ndf$group = paste(df$model, df$medium, sep="_")\n#df = subset(df, df$model == "multi")\n#df = subset(df, df$medium == "Tissue")\ndf$radius = 2000 + df$radius\n\n\ng = ggplot(df, aes( y=radius,\n                    x=group,\n                    fill=concentration))+\n    geom_tile()+\n    theme_bw()+\n    ylim(c(0,max(df$radius)+20))+\n    coord_polar(theta="x")+\n    scale_fill_gradient(low="steelblue",high="firebrick")+\n    theme(panel.background=element_blank(),\n           axis.title=element_blank(),\n           panel.grid=element_blank(),\n           #axis.text.x=element_blank(),\n           axis.ticks=element_blank())\n    \nprint(g)')
-
-
-# In[ ]:
-
-
-
+np.savetxt('./sim_default.f.csv', simd.f, delimiter=",")
+np.savetxt('./sim_default.t.csv', simd.t, delimiter=",")
+np.savetxt('./sim_multi.f.csv', sim2.f,  delimiter=",")
+np.savetxt('./sim_multi.t.csv', sim2.t,  delimiter=",")

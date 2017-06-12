@@ -1,5 +1,20 @@
+"""
+This script runs a finite differences scheme for predicting 
+drug deposition in an arterial wall.
 
-# coding: utf-8
+It takes a mutli compartment (or single) model of the wall 
+and descritizes the mass transfer constants for each tissue
+along the solution mesh.
+
+example usage:
+# run the simulation using the 4 compartment model from vafai 2006
+# for 6000 seconds, with a delivery time of 4 minutes
+# use a time step of 0.002 seconds and a radial step of 1 um 
+python drug_dieposition.py --model vafai4 --time 6000 --delivery --240 --dt 0.002 --dr 1
+
+The script will output a csv file with the results as well as a
+python pickle of the simulation class.
+"""
 
 # In[6]:
 import sys, os
@@ -7,6 +22,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import argparse
+
 # # Parameters
 # 
 # Multilayer models the the arterial wall taken from Jesionek 2014.
@@ -97,84 +113,15 @@ class Abraham_1_Layer(object):
     Dt = [i * 1E12 for i in Dt]
     K  = [i * 1E12 for i in K]
 
-class Testing_Parameters_4_Layer(object):
-    """ Multi Phase testing parameters for 4 layer wall
-    """
-    
-    # Global
-    Df = 50
-    vessel_radius = 2.00E3 
-    dp = 4784
-    
-    # Variable  
-    names       = [  'endothel'  , 'intima' , 'IEL'     ,'media'   ]
-    L           = [   2.         , 10.      , 2.        , 200.     ]
-    Dt          = [   6E-6       , 5.0e-1   , 3.18e-4   , 5e-3     ]
-    epsilon     = [   5E-4       , 0.61     , 5E-4      , 0.61     ] 
-    alpha       = [   1-0.9886   , 1-0.8292 , 1-0.8295  , 1-0.8660 ]
-    gamma       = [   38         , 38       , 38        , 38       ] 
-    K           = [   3.2172e-9  , 2.2e-4   , 3.18e-7   , 2e-6     ]
-    mu          = [   0.72e-3    , 0.72e-3  , 0.72e-3   , 0.72e-3  ]
- 
-class Testing_Parameters_2_Layer(object):
-    """ Multi Phase testing parameters.
-    """
-    
-    # Global
-    Df = 50
-    vessel_radius = 2.00E3 
-    dp = 4784
-    
-    # Variable
-    name        = [ 'endothelium', 'wall' ]
-    L           = [ 10           , 200    ] 
-    Dt          = [ 5.0E-6       , 0.6    ] 
-    epsilon     = [ 5E-4         , 0.61   ] 
-    alpha       = [ 0.01         , 0.15   ] 
-    gamma       = [ 38           , 38     ]
-    K           = [ 3.2E-12      , 1.2E-6 ] 
-    mu          = [ 1.0E-3       , 1.0E-3 ] 
-               
-class Testing_Parameters(object):
-    """ Single Phase testing parameters used in Abraham et al.
-    """
-    
-    # Global Parameters
-    
-    # Flux - VR
-    # Diffusivity of drug in fluid
-    # vessel size
-    # Pressure drop
-    VR = 37.5 # um^2/s?
-    Df = 50 # um^2/s
-    vessel_radius = 2.00E3 # um
-    dp = 4784 # Pa
-    
-    # Parameters of multi layer wall
-    # Wall thicknes (r) - L [um]
-    # Diffusivity - D [um^2/s]
-    # porosity - epsilon  [D'less]
-    # binding - alpha (1-reflection coefficient) [D'less]
-    # partition coefficient - gamma [D'less]
-        
-    name        = [ 'wall' ]
-    L           = [ 214    ] # this is to match the new model
-    Dt          = [ 6E-13    ] # Diffusivity 
-    epsilon     = [ 0.61   ] # porosity [D'less]
-    alpha       = [ 0.01   ] # binding coefficeint [D'less]
-    gamma       = [ 38     ] # parition coefficient 
-    K           = [ 2E-18 ] # permeability um^2
-    mu          = [ 1.4E-3 ] # dynamic viscosity Pa-s
-    
- 
-# # Simulation Class
-# The simulation class is the work horse of the implementation.  It does a number of things:
-# 1) takes in an arterial wall parameter model defined above
-# 2) Descritizes the wall in radius and time, as well as parameter space across the radius
-# 3) Solves the drug diffusion model
-
 class Drug_Diffusion(object):
+    # # Simulation Class
+    # The simulation class is the work horse of the implementation.  It does a number of things:
+    # 1) takes in an arterial wall parameter model defined above
+    # 2) Descritizes the wall in radius and time, as well as parameter space across the radius
+    # 3) Solves the drug diffusion model
+
     def __init__(self, parameters, options=None):
+        # initialize object with parameters and options
         self.options = options
         self.p = parameters
         self.t = None
@@ -284,10 +231,11 @@ class Drug_Diffusion(object):
         # store results
         self.t = t
         self.f = f
-        
-
+       
 def my_melt(sim, fluid=True, sub_sample = True):
+    """
     # function to melt the solution matrix from a simulation
+    """
     if fluid: # if the fluid flag is set then prep the solution for the fluid matrix
         df = pd.DataFrame(sim.f)
     else: # otherwise do the tissue
@@ -310,29 +258,60 @@ def my_melt(sim, fluid=True, sub_sample = True):
             
     return df
 
+def merge_data(simd, sim2):
+    """
+    Functin to merge two runs of the drug diffusion simulation together
+    """
+    # get melted versions of solution matrix 
+    default_f = my_melt(simd, fluid=True)
+    default_t = my_melt(simd, fluid=False)
+    multi_f = my_melt(sim2, fluid=True)
+    multi_t = my_melt(sim2, fluid=False)
+
+    # add wall model identifiers to the dataframes
+    default_f['model'] = "default"
+    default_t['model'] = "default"
+    multi_f['model'] = "multi"
+    multi_t['model'] = "multi"
+
+    # add fluid/tissue identifier
+    default_f['medium'] = "fluid"
+    default_t['medium'] = "tissue"
+    multi_f['medium'] = "fluid"
+    multi_t['medium'] = "tissue"
+
+    # make a list of the resulting data frames
+    frames = [default_f, default_t, multi_f, multi_t]
+
+    # combine all the results into one dataframe
+    data = pd.concat(frames)
+
+    return data
+
 def main(options):
     # # Run Simulations
-
-
+    # write options to file for safe storage
     out_handle = open(os.path.join(options.output, "progress.txt"), "w")
-    out_handle.write("Staring with paramters: {}".format(options))
+    out_handle.write("Staring with paramters: {}\n".format(options))
     out_handle.close()
 
+    # figure out which model we want to use
     if options.model == "default":
-        parameters = Testing_Parameters()
+        parameters = Abraham_1_Layer()
     if options.model == "vafai4":
         parameters = Vafai_4_Layer()
 
-
+    # initialize the drug diffusion simulation class with the wall model
     sim = Drug_Diffusion(parameters, options=options)
+    # run the descritization, initializing the parameters, space, and time, matrices
     sim.descritize( total_time=options.time,
                     delivery_time=options.delivery_time,
                     dt=options.dt,
                     dr=options.dr)
+    # run the finite differences scheme
     sim.solve()
 
-
-    # get melted versions of solution matrix 
+    # get melted the two tissue types together
     multi_f = my_melt(sim, fluid=True)
     multi_t = my_melt(sim, fluid=False)
 

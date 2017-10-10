@@ -10,7 +10,7 @@ example usage:
 # run the simulation using the 4 compartment model from vafai 2006
 # for 6000 seconds, with a delivery time of 4 minutes
 # use a time step of 0.002 seconds and a radial step of 1 um 
-python drug_dieposition.py --model vafai4 --time 6000 --delivery --240 --dt 0.002 --dr 1
+python drug_dieposition.py --model vafai4 --time 6000 --delivery-time 240 --dt 0.002 --dr 1
 
 The script will output a csv file with the results as well as a
 python pickle of the simulation class.
